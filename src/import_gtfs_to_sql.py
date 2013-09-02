@@ -23,6 +23,7 @@
 import csv
 import sys
 import os
+import getopt
 
 
 def time_to_seconds(text):
@@ -129,7 +130,6 @@ class FrequenciesHandler(SpecialHandler):
 
         return row + [str(start_secs), str(end_secs)]
 
-
 def import_file(fname, tablename, handler, COPY=True):
     """Returns SQL statement iterator"""
     try:
@@ -166,8 +166,49 @@ def import_file(fname, tablename, handler, COPY=True):
     if COPY:
         yield "\\.\n"
 
+def print_usage():
+    print "Usage: %s [options] gtfs_data_dir [nocopy]" % sys.argv[0]
+    print "  If nocopy is present, then uses INSERT instead of COPY."
+    print "  Options:"
+    print "    -h"
+    print "      This help text."
+    print "    -n, --nocopy"
+    print "      Use INSERT instead of COPY."
+    print "    -p PREFIX, --table-prefix=PREFIX"
+    print "      Table prefix to use.  If not specified, it is 'gtfs_'."
+
 
 if __name__ == "__main__":
+
+    use_copy = True
+    table_prefix = "gtfs_"
+
+    try:
+        options, arguments = getopt.getopt(sys.argv[1:], "hp:n", ["table-prefix=", "no-copy"])
+    except getopt.GetoptError, err:
+        print str(err)
+        print_usage()
+        sys.exit(1)
+
+    for option, argument in options:
+        if option == "-h":
+            print_usage()
+            sys.exit()
+        elif option in ("-p", "--table-prefix"):
+            table_prefix = argument
+        elif option in ("-n", "--no-copy"):
+            use_copy = False
+
+    if "nocopy" in arguments:
+        use_copy = False
+        arguments.remove("nocopy")
+
+    if len(arguments) != 1:
+        print_usage()
+        sys.exit(1)
+
+    folder = arguments[0]
+
     fnames = [
         "agency",
         "stops",
@@ -190,17 +231,10 @@ if __name__ == "__main__":
     handlers['trips'] = TripsHandler()
     handlers['frequencies'] = FrequenciesHandler()
 
-    if len(sys.argv) not in (2, 3):
-        print "Usage: %s gtfs_data_dir [nocopy]" % sys.argv[0]
-        print "  If nocopy is present, then uses INSERT instead of COPY."
-        sys.exit()
-
-    use_copy = "nocopy" not in sys.argv[2:]
-
     print "begin;"
 
     for fname in fnames:
-        for statement in import_file(os.path.join(sys.argv[1], fname + ".txt"), "gtfs_" + fname, handlers[fname], use_copy):
+        for statement in import_file(os.path.join(folder, fname + ".txt"), table_prefix + fname, handlers[fname], use_copy):
             print statement
 
     print "commit;"
